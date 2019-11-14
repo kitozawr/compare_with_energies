@@ -1,6 +1,6 @@
 # compare_with_energies
 
-Compare data obtained at one computer with pulse energies stored at another computer. Computer timers are not sinchronized with each other. 
+Matches data obtained at one computer with pulse energies stored at another computer. Computer timers are not sinchronized with each other. 
 Takes into account skips in data recording.
 The method relies on correlation between the pulse energy and signal intensity.
 
