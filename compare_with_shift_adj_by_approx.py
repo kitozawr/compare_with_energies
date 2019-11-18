@@ -149,41 +149,43 @@ def parse_cmd_line():
 	parser.add_argument('--inv', help="for inverted acoustics data", action="store_true")
 	parser.add_argument('-ro','--rem_out', dest='rem_out', help="remove points that outlines trend more than N_out sigma values.", action="store_true")
 	parser.add_argument('--ac_lims', type=float, nargs=2, help="remove points that outlines trend more than N_out sigma values.")
+	parser.add_argument('--no_trig', help="Don't use strob column for energies files. Assume that the energy file recording started by turning on the strob (first acoustic waveform correspond to one of the first rows in the file with energies (or was obtained just before the first energy value was recorded)). Otherwise, the col_trig data will be used to define, when the recording of the acoustic started", action="store_true")
+	parser.add_argument('--run_av', help="Use running average for acoustic data processing. Default averaging is by 11 points then by 20 points.", action="store_true")
+	parser.add_argument('--shift_lims', type=float, nargs=2, help="shift (between first data file and first energy entry) maximum and minimum values (in shots). If not specified set to -3, 5")
 
 	args = parser.parse_args()
-	args.ac_lims = np.asarray(args.ac_lims)
+	if args.ac_lims is not None:
+		args.ac_lims = np.asarray(args.ac_lims)
+	if args.shift_lims is None:
+		args.shift_lims = [-3, 5]
 
 	return(args)
 
 def main():
 	#%% Константы
 	filetype_en = ".dat"
-	shift_min = -3
-	shift_max = 5
+	#shift_min = -100
+	#shift_max = 100
 	set_limit = 10 # Минимальная длина выборки, начиная с которой данные считаются успешно сопоставленными.
 	use_fon = True # Использовать ли сигнал "фона" (земли) с диода.
 	col_fon = 6 #"старая" версия - 8, "новая" - 6.
 	col_trig = 8 #"старая" версия - 6, "новая" - 8.
 	col_en = 9 # номер столбца с энергиями.
-	use_trig = True # Использовать ли колонку с сигналом строба, или считать начало записи выборки в начале файла с энергиями.
+	#use_trig = True # Использовать ли колонку с сигналом строба, или считать начало записи выборки в начале файла с энергиями.
 	r2_coeff = 1.0 # Если в режиме без коррекции пропусков (--try) r^2 > r2_coeff*r^2 в обычном режиме сопоставления, то используется режим без коррекции пропусков.
 	low_r2_threshold = 0.1 # Если r^2 ниже этого значения, сопоставление считается проведённым неуспешно, выполняется попытка автоматического поиска shift (по начальным временам сопоставляемых данных), и сопоставление при этом значении shift.
 	bounds_inv = (np.array([-np.inf, -np.inf]), np.array([-1e-5, np.inf])) #Границы подбора параметров аппроксимации для "перевёрнутой" акустики.
 	bounds_not_inv = (np.array([1e-5, -np.inf]), np.array([np.inf, np.inf])) #Границы подбора параметров аппроксимации для "не перевёрнутой" акустики.
-	DELTA = 10 #[мс] Максимально допустимый сдвиг текущего кадра по времени относительно рассчётного времени. По умолчанию DELTA = 15 мс.
+	DELTA = 15 #[мс] Максимально допустимый сдвиг текущего кадра по времени относительно рассчётного времени. По умолчанию DELTA = 15 мс.
 	is_zero = 1e-8 #Условие "обращения в ноль" значений float при проверках.
 	is_zero_int = 1e-1 #Условие "обращения в ноль" значений float при проверках, когда сравниваются целые числа.
 	N_out = 5.0 #Если данные отклоняются от линейной зависимости более, чем на N_out*sigma, то они выбрасываются из завершающего сопоставления.
+	en_str_length_default = 17 #Длина строки в файле с энергиями (значение по умолчанию).
 
 	#%% Начальные параметры
 	#no_gaps = False #Используется обычный метод сопоставления (с коррекцией пропусков) - False, или без коррекции пропусков (в режиме --try). Флаг, используемый в программе для вывода в файл режима сопоставления, начальное значение менять не нужно.
 
-	print("\n!!!")
-	print("use_fon = {}".format(use_fon))
-	print("use_trig = {}".format(use_trig))
-	print(f'DELTA = {DELTA}\n')
-
-	# Parse command line arguments.
+	#%% Parse command line arguments.
 	args = parse_cmd_line()
 	print(args)
 
@@ -192,9 +194,19 @@ def main():
 	ft = args.ft
 	ext = args.ext
 
+	use_trig = not args.no_trig # Использовать ли колонку с сигналом строба, или считать начало записи выборки в начале файла с энергиями.
+
+	#%% Print some reminders for user.
+	print("\n!!!")
+	print("use_fon = {}".format(use_fon))
+	print("use_trig = {}".format(use_trig))
+	print(f'DELTA = {DELTA}\n')
+
 	print(folder_en)
 
 	print("Use try_no_losses={}, same_computer={}, old_osc={}, inv={}".format(args.try_no_losses, args.same_computer, args.old_osc, args.inv))
+
+	#%% Main.
 
 	f_params = open(os.path.join(folder_ac, "Calibration_parameters.txt"), 'w')
 	f_params.write("foldername_ac \t best_shift \t max_r^2 \t Number of the matched files\n")
@@ -221,8 +233,11 @@ def main():
 	#Список файлов с энергиями и файлов с акустикой, сортировано в алфавитном порядке.
 	filenames_en = [os.path.join(folder_en, f) for f in sorted(os.listdir(folder_en)) if f.endswith(filetype_en)]
 	foldernames_ac = sorted(next(os.walk(folder_ac))[1])
-	#print(filenames_en)
-	#print(foldernames_ac)
+
+	#Вычисление длины строки в файле с энергиями.
+	en_str_length = dp.autodetect_en_line_length(filenames_en[0])
+	if en_str_length == "FAIL":
+		en_str_length = en_str_length_default #Присваиваем значение по умолчанию.
 
 	for filename_en in filenames_en:
 		#Название файла с энергиями (без расширения и пути).
@@ -235,7 +250,7 @@ def main():
 
 			if filename_en_splitted == foldername_ac_splitted:
 				print(foldername_ac)
-				time_en, energies, i_start, lc, signal, fon = dp.read_en_all_data(filename_en, col_en=col_en, col_fon=col_fon, col_trig=col_trig)
+				time_en, energies, i_start, lc, signal, fon = dp.read_en_all_data(filename_en, line_length = en_str_length, col_en=col_en, col_fon=col_fon, col_trig=col_trig)
 				graph_file = foldername_ac+"/Фон.png"
 				fon_i = np.linspace(0, len(fon), len(fon))
 				dp.en_wf_plot(fon_i, fon, graph_file, style = '-')
@@ -255,14 +270,21 @@ def main():
 				print(foldername_ac_splitted)
 				###TEMP####
 				if 'kalibr' in foldername_ac_splitted or 'calibr' in foldername_ac_splitted:
-					maxima = dp.read_maxima(foldername_ac, filenames_ac_times, filenames_ac_info, ext, area=area, fon_coeff=1.0, old_osc=args.old_osc, limit_max = True, inv=False, ac_lims=None)
 					print("HERE1!!!\n")
+					print(f'args.ac_lims = {args.ac_lims}')
+					maxima = dp.read_maxima(foldername_ac, filenames_ac_times, filenames_ac_info, ext, area=area, fon_coeff=1.0, old_osc=args.old_osc, limit_max = True, inv=False, ac_lims=None, use_run_av=args.run_av)
+
+					###TEMP###
+					print(zip(filenames_ac_info, maxima))
+					###TEMP###
+
 				else:
-					maxima = dp.read_maxima(foldername_ac, filenames_ac_times, filenames_ac_info, ext, area=area, fon_coeff=1.0, old_osc=args.old_osc, limit_max = False, inv=args.inv, ac_lims=args.ac_lims)
 					print("HERE2!!!\n")
+					print(f'args.ac_lims = {args.ac_lims}')
+					maxima = dp.read_maxima(foldername_ac, filenames_ac_times, filenames_ac_info, ext, area=area, fon_coeff=1.0, old_osc=args.old_osc, limit_max = False, inv=args.inv, ac_lims=args.ac_lims, use_run_av=args.run_av)
 
 				if ft == 'ac' and args.same_computer:
-					calibration = dp.compare_not_save_same_computer(filename_en, foldername_ac, ext=ext, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon=use_fon, DELTA=DELTA)
+					calibration = dp.compare_not_save_same_computer(filename_en, foldername_ac, ext=ext, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon=use_fon, DELTA=DELTA, line_length = en_str_length)
 					### Подготовка данных для графика.
 					j_start = 0
 					energies_parrots = []
@@ -296,7 +318,7 @@ def main():
 					#Сопоставление (запись в файл).
 					folder_ac_to_write = folder_to_write + filename_en_splitted + os.sep
 					os.makedirs(folder_ac_to_write)
-					dp.compare_same_computer(filename_en, foldername_ac, folder_ac_to_write, ext=ext, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon=use_fon, DELTA=DELTA)
+					dp.compare_same_computer(filename_en, foldername_ac, folder_ac_to_write, ext=ext, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon=use_fon, DELTA=DELTA, line_length = en_str_length)
 				else:
 					best_shift = -1
 					max_r_2 = -1
@@ -307,17 +329,17 @@ def main():
 					num_matched_old = 0
 					a_old = 0; b_old = 0
 
-					for shift in range(shift_min, shift_max+1):
+					for shift in range(args.shift_lims[0], args.shift_lims[1]+1):
 						energies_parrots = []
 						maxima_new = []
 						print("shift = {}".format(shift))
 
-						if args.try_no_losses == True and dp.check_if_there_were_lost(filename_en, foldername_ac, ext, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, old_osc=args.old_osc):
+						if args.try_no_losses == True and dp.check_if_there_were_lost(filename_en, foldername_ac, ext, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, old_osc=args.old_osc, line_length = en_str_length):
 							energies_parrots_old = []
 							maxima_new_old = []
-							calibration = dp.compare_not_save_no_lost(filename_en, foldername_ac, ext, shift = shift, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, use_trig=use_trig, old_osc=args.old_osc, DELTA=DELTA) # No gaps
+							calibration = dp.compare_not_save_no_lost(filename_en, foldername_ac, ext, shift = shift, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, use_trig=use_trig, old_osc=args.old_osc, DELTA=DELTA, line_length = en_str_length) # No gaps
 							# old -> general method (with gaps, old)
-							calibration_old = dp.compare_not_save_new_method(filename_en, foldername_ac, ext, shift = shift, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, use_trig=use_trig, old_osc=args.old_osc, DELTA=DELTA) #Для согласованности надо не забыть поменять метод ниже.
+							calibration_old = dp.compare_not_save_new_method(filename_en, foldername_ac, ext, shift = shift, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, use_trig=use_trig, old_osc=args.old_osc, DELTA=DELTA, line_length = en_str_length) #Для согласованности надо не забыть поменять метод ниже.
 							#For general (old) method.
 							j_start = 0
 							for i in range(0, len(filenames_ac_times)):
@@ -339,7 +361,7 @@ def main():
 								best_shift_old = shift
 								num_matched_old = len(energies_parrots_old)
 						else:
-							calibration = dp.compare_not_save_new_method(filename_en, foldername_ac, ext, shift = shift, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, use_trig=use_trig, old_osc=args.old_osc, DELTA=DELTA) #Для согласованности надо не забыть поменять метод ниже.
+							calibration = dp.compare_not_save_new_method(filename_en, foldername_ac, ext, shift = shift, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, use_trig=use_trig, old_osc=args.old_osc, DELTA=DELTA, line_length = en_str_length) #Для согласованности надо не забыть поменять метод ниже.
 
 						# Калибровка для нового метода (если используется флаг --try и не были пропущены стробы.
 						# Либо калибровка для старого (general) метода, если используется только он.
@@ -356,7 +378,7 @@ def main():
 						maxima_new = np.array(maxima_new)
 
 						#%% Построение графиков.
-						if args.try_no_losses == True and dp.check_if_there_were_lost(filename_en, foldername_ac, ext, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, old_osc=args.old_osc):
+						if args.try_no_losses == True and dp.check_if_there_were_lost(filename_en, foldername_ac, ext, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, old_osc=args.old_osc, line_length = en_str_length):
 							# No gaps and general method.
 							calibration_file = foldername_ac+"/Калибровка_" + str(shift) + "_no_gaps.png"
 							dp.en_wf_plot(energies_parrots, maxima_new, calibration_file, style = '.', dpi=200)
@@ -376,10 +398,10 @@ def main():
 							max_r_2 = cur_r_2
 							best_shift = shift
 							num_matched = len(energies_parrots)
-						best_shift, max_r_2, a, b, num_matched = fit_and_check_shift(fit_function, energies_parrots, maxima_new, best_shift, shift, max_r_2, num_matched_old, set_limit, bounds=bounds_inv)
+						#best_shift, max_r_2, a, b, num_matched = fit_and_check_shift(fit_function, energies_parrots, maxima_new, best_shift, shift, max_r_2, num_matched_old, set_limit, bounds=bounds_inv)
 
 					#%% Если максимальный r2 меньше порога, запускаем автоматический поиск "правильного" сдвига.
-					if args.try_no_losses == True and dp.check_if_there_were_lost(filename_en, foldername_ac, ext, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, old_osc=args.old_osc):
+					if args.try_no_losses == True and dp.check_if_there_were_lost(filename_en, foldername_ac, ext, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, old_osc=args.old_osc, line_length = en_str_length):
 						if max_r_2 < low_r2_threshold and max_r_2_old < low_r2_threshold:
 							best_shift = dp.shift_search(filenames_ac_times, dt = 0.1, shift_border_min = -3, shift_border_max = 5)
 							shift_corr = True
@@ -399,19 +421,19 @@ def main():
 					# осталось запустить разметку интерферограмм с нужным best_shift
 					folder_ac_to_write = os.path.join(folder_to_write, filename_en_splitted)
 					os.makedirs(folder_ac_to_write)
-					if args.try_no_losses == True and dp.check_if_there_were_lost(filename_en, foldername_ac, ext, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, old_osc=args.old_osc):
+					if args.try_no_losses == True and dp.check_if_there_were_lost(filename_en, foldername_ac, ext, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, old_osc=args.old_osc, line_length = en_str_length):
 						print('max r_2 = {}, max r_2 old = {}, optimal_shift = {}, optimal_shift_old = {}'.format(max_r_2, max_r_2_old, best_shift, best_shift_old))
 						if max_r_2 > max_r_2_old * r2_coeff:
 							print("Используется метод без пропусков.")
-							dp.compare_no_lost(filename_en, foldername_ac, folder_ac_to_write, ext=ext, shift = best_shift, use_fon = use_fon, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_trig=use_trig, old_osc=args.old_osc, DELTA = DELTA)
+							dp.compare_no_lost(filename_en, foldername_ac, folder_ac_to_write, ext=ext, shift = best_shift, use_fon = use_fon, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_trig=use_trig, old_osc=args.old_osc, DELTA = DELTA, line_length = en_str_length)
 							no_gaps = True
 						else:
 							print("Используется обычный метод сопоставления.")
-							dp.compare_new_method(filename_en, foldername_ac, folder_ac_to_write, ext=ext, shift = best_shift_old, use_fon = use_fon, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_trig=use_trig, old_osc=args.old_osc, DELTA = DELTA) #Для согласованности надо не забыть поменять метод выше.
+							dp.compare_new_method(filename_en, foldername_ac, folder_ac_to_write, ext=ext, shift = best_shift_old, use_fon = use_fon, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_trig=use_trig, old_osc=args.old_osc, DELTA = DELTA, line_length = en_str_length) #Для согласованности надо не забыть поменять метод выше.
 							no_gaps = False
 					else:
 						print('max r_2: {}, optimal_shift = {}'.format(max_r_2, best_shift))
-						dp.compare_new_method(filename_en, foldername_ac, folder_ac_to_write, ext=ext, shift = best_shift, use_fon = use_fon, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_trig=use_trig, old_osc=args.old_osc, DELTA = DELTA) #Для согласованности надо не забыть поменять метод выше.
+						dp.compare_new_method(filename_en, foldername_ac, folder_ac_to_write, ext=ext, shift = best_shift, use_fon = use_fon, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_trig=use_trig, old_osc=args.old_osc, DELTA = DELTA, line_length = en_str_length) #Для согласованности надо не забыть поменять метод выше.
 						no_gaps=False
 
 					if shift_corr:
