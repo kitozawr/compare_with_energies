@@ -151,7 +151,7 @@ def parse_cmd_line():
 	parser.add_argument('--ac_lims', type=float, nargs=2, help="remove points that outlines trend more than N_out sigma values.")
 	parser.add_argument('--no_trig', help="Don't use strob column for energies files. Assume that the energy file recording started by turning on the strob (first acoustic waveform correspond to one of the first rows in the file with energies (or was obtained just before the first energy value was recorded)). Otherwise, the col_trig data will be used to define, when the recording of the acoustic started", action="store_true")
 	parser.add_argument('--run_av', help="Use running average for acoustic data processing. Default averaging is by 11 points then by 20 points.", action="store_true")
-	parser.add_argument('--shift_lims', type=float, nargs=2, help="shift (between first data file and first energy entry) maximum and minimum values (in shots). If not specified set to -3, 5")
+	parser.add_argument('--shift_lims', type=int, nargs=2, help="shift (between first data file and first energy entry) maximum and minimum values (in shots). If not specified set to -3, 5")
 
 	args = parser.parse_args()
 	if args.ac_lims is not None:
