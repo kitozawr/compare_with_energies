@@ -189,7 +189,7 @@ def main():
 				time_en, energies, i_start, lc, signal, fon = dp.read_en_all_data(filename_en, line_length = en_str_length, col_en=col_en, col_fon=col_fon, col_trig=col_trig)
 				graph_file = foldername_ac+"/Фон.png"
 				fon_i = np.linspace(0, len(fon), len(fon))
-				#dp.en_wf_plot(fon_i, fon, graph_file, style = '-')
+				dp.en_wf_plot(fon_i, fon, graph_file, style = '-')
 				scatter_plot(fon_i, fon, title='Фон')
 
 				#i_start = 0
@@ -233,6 +233,7 @@ def main():
 					maxima_new = np.array(maxima_new)
 
 					### Построение графика (для случая "same_computer").
+					calibration_file = foldername_ac+"/Калибровка_same" + ".png"
 					dp.en_wf_plot(energies_parrots, maxima_new, calibration_file, style = '.')
 					scatter_plot(energies_parrots, maxima_new, title='same')
 					#########NEW#############
@@ -312,14 +313,14 @@ def main():
 						if args.try_no_losses == True and dp.check_if_there_were_lost(filename_en, foldername_ac, ext, col_en=col_en, col_fon=col_fon, col_trig=col_trig, use_fon = use_fon, old_osc=args.old_osc, line_length = en_str_length):
 							# No gaps and general method.
 							calibration_file = foldername_ac+"/Калибровка_" + str(shift) + "_no_gaps.png"
-							#dp.en_wf_plot(energies_parrots, maxima_new, calibration_file, style = '.', dpi=200)
+							dp.en_wf_plot(energies_parrots, maxima_new, calibration_file, style = '.', dpi=200)
 							calibration_file = foldername_ac+"/Калибровка_" + str(shift) + ".png"
-							#dp.en_wf_plot(energies_parrots_old, maxima_new_old, calibration_file, style = '.', dpi=200)
+							dp.en_wf_plot(energies_parrots_old, maxima_new_old, calibration_file, style = '.', dpi=200)
 							scatter_plot(energies_parrots_old, maxima_new_old, title='shift= '+str(shift))
 						else:
 							# General method.
 							calibration_file = foldername_ac+"/Калибровка_" + str(shift) +".png"
-							#dp.en_wf_plot(energies_parrots, maxima_new, calibration_file, style = '.', dpi=200)
+							dp.en_wf_plot(energies_parrots, maxima_new, calibration_file, style = '.', dpi=200)
 							scatter_plot(energies_parrots, maxima_new, title='shift= '+str(shift))
 
 						if energies_parrots.size <= 1:
