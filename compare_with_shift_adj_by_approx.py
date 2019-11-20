@@ -138,7 +138,7 @@ def main():
 	print("\n***Program initialized***")
 	print("use_fon = {}".format(use_fon))
 	print("use_trig = {}".format(use_trig))
-	print('DELTA = {DELTA}\n')
+	print(f'DELTA = {DELTA}\n')
 
 	print(folder_en)
 
